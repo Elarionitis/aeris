@@ -1,9 +1,12 @@
+from math import sin, pi
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import pandas as pd
 
 from app.models.advisory import generate_advisory_response
-from app.models.enforcement import priority_queue_response
+from app.models.enforcement import WARD_STATE, priority_queue_response
 from app.models.attribution import load_attribution_model
 from app.models.forecasting import load_forecast_artifact, recursive_forecast
 from app.api.wards import router as wards_router
@@ -14,6 +17,13 @@ router.include_router(wards_router)
 
 class ForecastRequest(BaseModel):
     history: list[dict]
+
+
+def _ward_state(ward_id: str) -> pd.Series:
+    match = WARD_STATE.loc[WARD_STATE["ward_id"].astype(str) == str(ward_id)]
+    if match.empty:
+        raise HTTPException(status_code=404, detail=f"Unknown ward_id: {ward_id}")
+    return match.iloc[0]
 
 
 @router.get("/health")
@@ -43,14 +53,43 @@ def forecast_ward(ward_id: str, payload: ForecastRequest) -> dict[str, object]:
     }
 
 
+@router.get("/forecast/{ward_id}")
+def demo_forecast_ward(ward_id: str) -> dict[str, object]:
+    """Return a deterministic 72-hour demo curve when a browser has no history payload.
+
+    The production endpoint above remains the POST endpoint and accepts real
+    feature history. This GET route keeps the dashboard demonstrable offline.
+    """
+    ward = _ward_state(ward_id)
+    base = float(ward.aqi)
+    trend = float(ward.aqi_trend_days) * 0.55
+    forecast = []
+    for horizon in range(1, 73):
+        prediction = base + trend * (horizon / 24) + 7.0 * sin(2 * pi * horizon / 24)
+        interval = 10.0 + horizon * 0.12
+        forecast.append(
+            {
+                "horizon_hours": horizon,
+                "prediction": round(prediction, 2),
+                "lower": round(prediction - interval, 2),
+                "upper": round(prediction + interval, 2),
+            }
+        )
+    return {"ward_id": ward_id, "forecast": forecast, "mode": "demo_curve"}
+
+
 @router.get("/attribution/{ward_id}")
 def attribution_ward(
     ward_id: str,
-    traffic_density_index: float = 0.0,
-    construction_permit_count: float = 0.0,
-    industrial_stack_count: float = 0.0,
+    traffic_density_index: Optional[float] = None,
+    construction_permit_count: Optional[float] = None,
+    industrial_stack_count: Optional[float] = None,
     thermal_anomaly_count_24h: float = 0.0,
 ) -> dict[str, object]:
+    ward = _ward_state(ward_id)
+    traffic_density_index = traffic_density_index if traffic_density_index is not None else max(0.1, 100 - float(ward.industrial_pct) - float(ward.construction_pct)) / 10
+    construction_permit_count = construction_permit_count if construction_permit_count is not None else float(ward.construction_pct) / 10
+    industrial_stack_count = industrial_stack_count if industrial_stack_count is not None else float(ward.industrial_pct) / 10
     try:
         model = load_attribution_model()
     except FileNotFoundError as exc:

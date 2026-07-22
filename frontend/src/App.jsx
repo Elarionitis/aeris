@@ -33,6 +33,10 @@ function fetchJson(path, signal) {
   });
 }
 
+function showRequestError(error, setError) {
+  if (error?.name !== 'AbortError') setError(error.message || 'Failed to load data');
+}
+
 class PanelErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -102,12 +106,13 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController();
     setWardsLoading(true);
+    setWardsError('');
     fetchJson('/wards', controller.signal)
       .then((data) => {
         setWards(data);
         setSelectedWardId((current) => current || data?.[0]?.ward_id || '');
       })
-      .catch((error) => setWardsError(error.message || 'Failed to load wards'))
+      .catch((error) => showRequestError(error, setWardsError))
       .finally(() => setWardsLoading(false));
     return () => controller.abort();
   }, []);
@@ -119,7 +124,7 @@ export default function App() {
     setForecastError('');
     fetchJson(`/forecast/${selectedWardId}`, controller.signal)
       .then((data) => setForecast(data))
-      .catch((error) => setForecastError(error.message || 'Failed to load forecast'))
+      .catch((error) => showRequestError(error, setForecastError))
       .finally(() => setForecastLoading(false));
     return () => controller.abort();
   }, [selectedWardId]);
@@ -131,7 +136,7 @@ export default function App() {
     setAttributionError('');
     fetchJson(`/attribution/${selectedWardId}`, controller.signal)
       .then((data) => setAttribution(data))
-      .catch((error) => setAttributionError(error.message || 'Failed to load attribution'))
+      .catch((error) => showRequestError(error, setAttributionError))
       .finally(() => setAttributionLoading(false));
     return () => controller.abort();
   }, [selectedWardId]);
@@ -139,9 +144,10 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController();
     setEnforcementLoading(true);
+    setEnforcementError('');
     fetchJson('/enforcement/priority-queue', controller.signal)
       .then((data) => setEnforcement(data))
-      .catch((error) => setEnforcementError(error.message || 'Failed to load enforcement queue'))
+      .catch((error) => showRequestError(error, setEnforcementError))
       .finally(() => setEnforcementLoading(false));
     return () => controller.abort();
   }, []);
@@ -153,7 +159,7 @@ export default function App() {
     setAdvisoryError('');
     fetchJson(`/advisory/${selectedWardId}?lang=${lang}`, controller.signal)
       .then((data) => setAdvisory(data))
-      .catch((error) => setAdvisoryError(error.message || 'Failed to load advisory'))
+      .catch((error) => showRequestError(error, setAdvisoryError))
       .finally(() => setAdvisoryLoading(false));
     return () => controller.abort();
   }, [selectedWardId, lang]);
