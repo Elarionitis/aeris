@@ -5,6 +5,8 @@ __pycache__/
 *.pyd
 *.venv/
 .env
+data/raw/
+*.pkl
 
 # Node
 node_modules/
