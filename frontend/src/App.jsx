@@ -1,107 +1,354 @@
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet';
 
-const chartData = [
-  { time: '06:00', now: 82, forecast: 88 },
-  { time: '09:00', now: 91, forecast: 95 },
-  { time: '12:00', now: 104, forecast: 101 },
-  { time: '15:00', now: 118, forecast: 112 },
-  { time: '18:00', now: 109, forecast: 106 },
-  { time: '21:00', now: 96, forecast: 94 },
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
+
+const AQI_BANDS = [
+  { max: 50, label: 'Good', color: '#009865' },
+  { max: 100, label: 'Satisfactory', color: '#a3c853' },
+  { max: 200, label: 'Moderate', color: '#ffd500' },
+  { max: 300, label: 'Poor', color: '#ff7e00' },
+  { max: 400, label: 'Very Poor', color: '#ff0000' },
+  { max: 500, label: 'Severe', color: '#7e0023' },
 ];
 
-const sources = [
-  { label: 'Live feeds', value: '3 sources', tone: 'signal', barClassName: 'bg-signal' },
-  { label: 'Forecast horizon', value: '48 hours', tone: 'amber', barClassName: 'bg-amber' },
-  { label: 'Alert confidence', value: 'High', tone: 'alert', barClassName: 'bg-alert' },
+const LANGS = [
+  { code: 'en', label: 'English' },
+  { code: 'kn', label: 'ಕನ್ನಡ' },
+  { code: 'ta', label: 'தமிழ்' },
+  { code: 'hi', label: 'हिन्दी' },
 ];
+
+function bandFor(aqi) {
+  return AQI_BANDS.find((band) => aqi <= band.max) || AQI_BANDS[AQI_BANDS.length - 1];
+}
+
+function fetchJson(path, signal) {
+  return fetch(`${API_BASE}${path}`, { signal }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json();
+  });
+}
+
+class PanelErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card" style={{ padding: 18 }}>
+          <div className="display" style={{ fontWeight: 700, marginBottom: 4 }}>{this.props.title}</div>
+          <div style={{ color: '#8291AA' }}>This panel failed to render. Other panels remain available.</div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function PanelFrame({ title, subtitle, loading, error, right, children }) {
+  return (
+    <div className="card" style={{ padding: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10, alignItems: 'flex-start' }}>
+        <div>
+          <div className="display" style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
+          {subtitle ? <div style={{ fontSize: 12, color: '#8291AA' }}>{subtitle}</div> : null}
+        </div>
+        {right}
+      </div>
+      {loading ? <div style={{ color: '#8291AA', minHeight: 120, display: 'grid', placeItems: 'center' }}>Loading…</div> : error ? <div style={{ color: '#F2A65A', fontSize: 13, lineHeight: 1.6 }}>{error}</div> : children}
+    </div>
+  );
+}
+
+function forecastRows(forecast) {
+  return (forecast || []).map((point) => ({
+    hour: `T+${point.horizon_hours}h`,
+    prediction: point.prediction,
+    lower: point.lower,
+    upper: point.upper,
+  }));
+}
 
 export default function App() {
+  const [wards, setWards] = useState([]);
+  const [selectedWardId, setSelectedWardId] = useState('');
+  const [wardsLoading, setWardsLoading] = useState(true);
+  const [wardsError, setWardsError] = useState('');
+  const [forecast, setForecast] = useState(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastError, setForecastError] = useState('');
+  const [attribution, setAttribution] = useState(null);
+  const [attributionLoading, setAttributionLoading] = useState(false);
+  const [attributionError, setAttributionError] = useState('');
+  const [enforcement, setEnforcement] = useState(null);
+  const [enforcementLoading, setEnforcementLoading] = useState(true);
+  const [enforcementError, setEnforcementError] = useState('');
+  const [lang, setLang] = useState('en');
+  const [advisory, setAdvisory] = useState(null);
+  const [advisoryLoading, setAdvisoryLoading] = useState(false);
+  const [advisoryError, setAdvisoryError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setWardsLoading(true);
+    fetchJson('/wards', controller.signal)
+      .then((data) => {
+        setWards(data);
+        setSelectedWardId((current) => current || data?.[0]?.ward_id || '');
+      })
+      .catch((error) => setWardsError(error.message || 'Failed to load wards'))
+      .finally(() => setWardsLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedWardId) return;
+    const controller = new AbortController();
+    setForecastLoading(true);
+    setForecastError('');
+    fetchJson(`/forecast/${selectedWardId}`, controller.signal)
+      .then((data) => setForecast(data))
+      .catch((error) => setForecastError(error.message || 'Failed to load forecast'))
+      .finally(() => setForecastLoading(false));
+    return () => controller.abort();
+  }, [selectedWardId]);
+
+  useEffect(() => {
+    if (!selectedWardId) return;
+    const controller = new AbortController();
+    setAttributionLoading(true);
+    setAttributionError('');
+    fetchJson(`/attribution/${selectedWardId}`, controller.signal)
+      .then((data) => setAttribution(data))
+      .catch((error) => setAttributionError(error.message || 'Failed to load attribution'))
+      .finally(() => setAttributionLoading(false));
+    return () => controller.abort();
+  }, [selectedWardId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setEnforcementLoading(true);
+    fetchJson('/enforcement/priority-queue', controller.signal)
+      .then((data) => setEnforcement(data))
+      .catch((error) => setEnforcementError(error.message || 'Failed to load enforcement queue'))
+      .finally(() => setEnforcementLoading(false));
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedWardId) return;
+    const controller = new AbortController();
+    setAdvisoryLoading(true);
+    setAdvisoryError('');
+    fetchJson(`/advisory/${selectedWardId}?lang=${lang}`, controller.signal)
+      .then((data) => setAdvisory(data))
+      .catch((error) => setAdvisoryError(error.message || 'Failed to load advisory'))
+      .finally(() => setAdvisoryLoading(false));
+    return () => controller.abort();
+  }, [selectedWardId, lang]);
+
+  const selectedWard = useMemo(() => wards.find((ward) => ward.ward_id === selectedWardId) || wards[0], [wards, selectedWardId]);
+  const cityAvg = useMemo(() => Math.round(wards.reduce((sum, ward) => sum + (ward.aqi || 0), 0) / Math.max(wards.length, 1)), [wards]);
+  const poorCount = useMemo(() => wards.filter((ward) => (ward.aqi || 0) > 200).length, [wards]);
+  const band = bandFor(selectedWard?.aqi || 0);
+  const forecastData = useMemo(() => forecastRows(forecast?.forecast), [forecast]);
+  const attributionData = useMemo(() => Object.entries(attribution?.breakdown || {}).map(([name, value]) => ({ name: name[0].toUpperCase() + name.slice(1), value })), [attribution]);
+  const priorityRows = enforcement?.items || [];
+
+  const wardGeoJson = useMemo(() => ({
+    type: 'FeatureCollection',
+    features: wards.map((ward) => ({
+      type: 'Feature',
+      properties: { ward_id: ward.ward_id, ward_name: ward.ward_name, aqi: ward.aqi, band: ward.band },
+      geometry: ward.geometry,
+    })),
+  }), [wards]);
+
+  function styleFeature(feature) {
+    const color = bandFor(feature?.properties?.aqi || 0).color;
+    return {
+      color,
+      weight: feature?.properties?.ward_id === selectedWardId ? 3 : 1.2,
+      fillColor: color,
+      fillOpacity: 0.35,
+    };
+  }
+
+  function onEachFeature(feature, layer) {
+    layer.on({ click: () => setSelectedWardId(feature.properties.ward_id) });
+    if (layer.bindTooltip) {
+      layer.bindTooltip(`${feature.properties.ward_name} · AQI ${feature.properties.aqi}`, { sticky: true });
+    }
+  }
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(20,184,166,0.16),_transparent_30%),linear-gradient(180deg,_#f8fafc_0%,_#e2e8f0_100%)] text-ink">
-      <section className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10 lg:px-10">
-        <header className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-white/80 p-6 shadow-glow backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-signal">AQI Intelligence</p>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-5xl">Air quality analysis built for fast calls.</h1>
+    <main style={{ minHeight: '100vh', background: '#0B1220', color: '#E8EDF5', fontFamily: 'Inter, sans-serif' }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap');
+        .display { font-family: 'Space Grotesk', sans-serif; }
+        .card { background: #131B2E; border: 1px solid #223047; border-radius: 14px; }
+      `}</style>
+
+      <div style={{ padding: '28px 32px 12px', borderBottom: '1px solid #1B2436' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <div className="display" style={{ fontSize: 26, fontWeight: 700, letterSpacing: 0.3 }}>
+              Urban Air Quality Intelligence <span style={{ color: '#F2A65A' }}>· Bengaluru</span>
             </div>
-            <div className="rounded-2xl bg-ink px-4 py-3 text-right text-white">
-              <p className="text-xs uppercase tracking-[0.24em] text-mist/70">Current AQI</p>
-              <p className="text-3xl font-semibold">104</p>
-              <p className="text-sm text-mist/80">Moderate, trending up</p>
+            <div style={{ color: '#8291AA', fontSize: 13, marginTop: 4 }}>
+              Geospatial source attribution · 72h hyperlocal forecast · enforcement prioritisation · multilingual citizen advisory
             </div>
           </div>
-          <p className="max-w-3xl text-base leading-7 text-slate-600">
-            A decision layer for city-level AQI monitoring, forecasting, and attribution. The backend will ingest external sources, while the frontend tracks live and predicted trends in one view.
-          </p>
-        </header>
+          <div style={{ background: '#1B2436', border: '1px solid #2A3855', borderRadius: 10, padding: '8px 14px', fontSize: 12, color: '#F2A65A' }}>
+            ⚠ Live data from API responses; translations must be reviewed by a native speaker before dispatch
+          </div>
+        </div>
+      </div>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          {sources.map((item) => (
-            <article key={item.label} className="rounded-2xl border border-white/70 bg-white/80 p-5 shadow-glow backdrop-blur">
-              <p className="text-sm font-medium text-slate-500">{item.label}</p>
-              <p className="mt-2 text-2xl font-semibold text-ink">{item.value}</p>
-              <div className={`mt-4 h-1.5 w-20 rounded-full ${item.barClassName}`} />
-            </article>
+      <div style={{ padding: 28, display: 'grid', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 16 }}>
+          {[
+            { label: 'City Avg AQI (now)', value: cityAvg || '—', sub: band.label, color: band.color },
+            { label: 'Wards in Poor/Worse', value: `${poorCount} / ${Math.max(wards.length, 1)}`, sub: 'need active intervention', color: '#ff7e00' },
+            { label: 'Forecast Confidence', value: forecast?.forecast?.length ? 'Live' : '—', sub: 'api-backed 72h curve', color: '#4ADE80' },
+            { label: 'Top Enforcement Priority', value: priorityRows[0]?.ward_name || '—', sub: `score ${priorityRows[0]?.score ?? '—'}`, color: '#F2A65A' },
+          ].map((item) => (
+            <div key={item.label} className="card" style={{ padding: 16 }}>
+              <div style={{ fontSize: 12, color: '#8291AA' }}>{item.label}</div>
+              <div className="display" style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: item.color }}>{item.value}</div>
+              <div style={{ fontSize: 12, color: '#8291AA', marginTop: 2 }}>{item.sub}</div>
+            </div>
           ))}
-        </section>
+        </div>
 
-        <section className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
-          <article className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-glow backdrop-blur">
-            <div className="mb-6 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Trend view</p>
-                <h2 className="mt-1 text-2xl font-semibold">Observed vs forecast AQI</h2>
+        <PanelErrorBoundary title="Ward Intelligence">
+          <div className="card" style={{ padding: 18 }}>
+            <div className="display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, color: '#8291AA' }}>WARD INTELLIGENCE MAP</div>
+            {wardsLoading ? (
+              <div style={{ color: '#8291AA', minHeight: 360, display: 'grid', placeItems: 'center' }}>Loading wards…</div>
+            ) : wardsError ? (
+              <div style={{ color: '#F2A65A' }}>{wardsError}</div>
+            ) : (
+              <div style={{ height: 420, borderRadius: 12, overflow: 'hidden' }}>
+                <MapContainer center={[12.9716, 77.5946]} zoom={11} style={{ height: '100%', width: '100%' }}>
+                  <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <GeoJSON data={wardGeoJson} style={styleFeature} onEachFeature={onEachFeature} />
+                </MapContainer>
               </div>
-              <div className="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-600">Updated 5 min ago</div>
-            </div>
-            <div className="h-96 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="nowFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#14b8a6" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" />
-                  <XAxis dataKey="time" stroke="#64748b" />
-                  <YAxis stroke="#64748b" />
-                  <Tooltip />
-                  <Legend />
-                  <Area type="monotone" dataKey="now" name="Observed" stroke="#14b8a6" fill="url(#nowFill)" strokeWidth={2.5} />
-                  <Area type="monotone" dataKey="forecast" name="Forecast" stroke="#f59e0b" fill="url(#forecastFill)" strokeWidth={2.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </article>
+            )}
+          </div>
+        </PanelErrorBoundary>
 
-          <aside className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-ink p-6 text-white shadow-glow">
-            <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-mist/70">System status</p>
-              <h2 className="mt-2 text-2xl font-semibold">Backend ready for local development</h2>
-            </div>
-            <div className="grid gap-3 text-sm text-mist/85">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">CORS enabled for Vite on localhost:5173</div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">API routes reserved for ingestion, attribution, and forecasting</div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">Docker compose will run both services together</div>
-            </div>
-          </aside>
-        </section>
-      </section>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.9fr', gap: 16 }}>
+          <PanelErrorBoundary title="Forecast">
+            <PanelFrame title={`${selectedWard?.ward_name || 'Ward'} — 72h AQI Forecast`} subtitle="API-backed forecast with confidence bounds" loading={forecastLoading} error={forecastError} right={<div className="card" style={{ background: '#1B2436', borderColor: '#2A3855', borderRadius: 999, padding: '6px 12px', fontSize: 12 }}>Selected: {selectedWard?.band || '—'}</div>}>
+              <div style={{ height: 320 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={forecastData}>
+                    <CartesianGrid stroke="#1B2436" />
+                    <XAxis dataKey="hour" tick={{ fontSize: 10, fill: '#8291AA' }} />
+                    <YAxis tick={{ fontSize: 10, fill: '#8291AA' }} />
+                    <Tooltip contentStyle={{ background: '#131B2E', border: '1px solid #223047' }} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="prediction" stroke="#F2A65A" strokeWidth={2.5} dot={false} name="Forecast" />
+                    <Line type="monotone" dataKey="lower" stroke="#556080" strokeWidth={1.2} strokeDasharray="4 4" dot={false} name="Lower CI" />
+                    <Line type="monotone" dataKey="upper" stroke="#556080" strokeWidth={1.2} strokeDasharray="4 4" dot={false} name="Upper CI" />
+                    <Area type="monotone" dataKey="prediction" stroke="#F2A65A" fill="#F2A65A" fillOpacity={0.05} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </PanelFrame>
+          </PanelErrorBoundary>
+
+          <PanelErrorBoundary title="Attribution">
+            <PanelFrame title="Source Attribution" subtitle="Live contribution breakdown from attribution endpoint" loading={attributionLoading} error={attributionError}>
+              <div style={{ height: 240 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={attributionData} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid stroke="#1B2436" />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: '#8291AA' }} />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#E8EDF5' }} width={90} />
+                    <Tooltip contentStyle={{ background: '#131B2E', border: '1px solid #223047' }} />
+                    <Bar dataKey="value" fill="#F2A65A" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ fontSize: 12, color: '#8291AA', marginTop: 6 }}>Confidence score: {attribution?.confidence_score ?? '—'}</div>
+            </PanelFrame>
+          </PanelErrorBoundary>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <PanelErrorBoundary title="Enforcement Priority">
+            <PanelFrame title="Enforcement Priority Queue" subtitle="Top 10 wards by score" loading={enforcementLoading} error={enforcementError}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {priorityRows.map((item, index) => (
+                  <div key={item.ward_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: index < priorityRows.length - 1 ? '1px solid #1B2436' : 'none', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{index + 1}. {item.ward_name}</div>
+                      <div style={{ fontSize: 11, color: '#8291AA' }}>{item.recommendation}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="display" style={{ color: '#F2A65A', fontWeight: 700 }}>{item.score}</div>
+                      <div style={{ fontSize: 11, color: '#8291AA' }}>{item.dominant_source}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PanelFrame>
+          </PanelErrorBoundary>
+
+          <PanelErrorBoundary title="Citizen Advisory">
+            <PanelFrame
+              title={`Citizen Health Advisory — ${selectedWard?.ward_name || 'Ward'}`}
+              subtitle="Live advisory text from backend LLM cache"
+              loading={advisoryLoading}
+              error={advisoryError}
+              right={
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {LANGS.map((item) => (
+                    <button
+                      key={item.code}
+                      onClick={() => setLang(item.code)}
+                      style={{
+                        fontSize: 11,
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        background: lang === item.code ? '#F2A65A' : '#1B2436',
+                        color: lang === item.code ? '#0B1220' : '#E8EDF5',
+                        border: '1px solid #2A3855',
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              }
+            >
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: '#E8EDF5' }}>{advisory?.advisory || 'No advisory available yet.'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 8, marginTop: 12, fontSize: 12 }}>
+                <div className="card" style={{ background: '#1B2436', borderColor: '#2A3855', padding: 10 }}>Near school: {String(advisory?.vulnerability_flags?.near_school ?? false)}</div>
+                <div className="card" style={{ background: '#1B2436', borderColor: '#2A3855', padding: 10 }}>Near hospital: {String(advisory?.vulnerability_flags?.near_hospital ?? false)}</div>
+                <div className="card" style={{ background: '#1B2436', borderColor: '#2A3855', padding: 10 }}>Elderly high: {String(advisory?.vulnerability_flags?.elderly_population_high ?? false)}</div>
+              </div>
+              <div style={{ fontSize: 11, color: '#8291AA', marginTop: 10 }}>Delivery channels: {(advisory?.delivery_channels || []).join(', ') || '—'}</div>
+              <div style={{ fontSize: 11, color: '#8291AA', marginTop: 6 }}>{advisory?.disclaimer || 'Translations should be reviewed by a native speaker before real-world dispatch.'}</div>
+            </PanelFrame>
+          </PanelErrorBoundary>
+        </div>
+      </div>
     </main>
   );
 }

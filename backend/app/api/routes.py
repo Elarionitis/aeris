@@ -6,8 +6,10 @@ from app.models.advisory import generate_advisory_response
 from app.models.enforcement import priority_queue_response
 from app.models.attribution import load_attribution_model
 from app.models.forecasting import load_forecast_artifact, recursive_forecast
+from app.api.wards import router as wards_router
 
 router = APIRouter(tags=["health"])
+router.include_router(wards_router)
 
 
 class ForecastRequest(BaseModel):
@@ -26,6 +28,8 @@ def forecast_ward(ward_id: str, payload: ForecastRequest) -> dict[str, object]:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail="Forecast model is not trained yet") from exc
     ward_frame = pd.DataFrame(payload.history)
+    if ward_frame.empty or "ward_id" not in ward_frame.columns:
+        raise HTTPException(status_code=404, detail="No history for ward_id")
     ward_frame = ward_frame.loc[ward_frame["ward_id"].astype(str) == str(ward_id)]
     if ward_frame.empty:
         raise HTTPException(status_code=404, detail="No history for ward_id")
