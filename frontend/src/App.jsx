@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { GeoJSON, MapContainer, TileLayer } from 'react-leaflet';
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
@@ -82,6 +82,16 @@ function forecastRows(forecast) {
     lower: point.lower,
     upper: point.upper,
   }));
+}
+
+function MapFocus({ ward }) {
+  const map = useMap();
+  useEffect(() => {
+    if (ward?.latitude != null && ward?.longitude != null) {
+      map.flyTo([ward.latitude, ward.longitude], 14, { duration: 0.7 });
+    }
+  }, [map, ward?.ward_id]);
+  return null;
 }
 
 export default function App() {
@@ -240,7 +250,20 @@ export default function App() {
 
         <PanelErrorBoundary title="Ward Intelligence">
           <div className="card" style={{ padding: 18 }}>
-            <div className="display" style={{ fontSize: 15, fontWeight: 700, marginBottom: 10, color: '#8291AA' }}>WARD INTELLIGENCE MAP</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+              <div className="display" style={{ fontSize: 15, fontWeight: 700, color: '#8291AA' }}>WARD INTELLIGENCE MAP</div>
+              <label style={{ fontSize: 12, color: '#8291AA' }}>
+                Select ward{' '}
+                <select
+                  aria-label="Select ward"
+                  value={selectedWardId}
+                  onChange={(event) => setSelectedWardId(event.target.value)}
+                  style={{ marginLeft: 6, background: '#1B2436', color: '#E8EDF5', border: '1px solid #2A3855', borderRadius: 6, padding: '6px 8px' }}
+                >
+                  {wards.map((ward) => <option key={ward.ward_id} value={ward.ward_id}>{ward.ward_name}</option>)}
+                </select>
+              </label>
+            </div>
             {wardsLoading ? (
               <div style={{ color: '#8291AA', minHeight: 360, display: 'grid', placeItems: 'center' }}>Loading wards…</div>
             ) : wardsError ? (
@@ -249,6 +272,7 @@ export default function App() {
               <div style={{ height: 420, borderRadius: 12, overflow: 'hidden' }}>
                 <MapContainer center={[12.9716, 77.5946]} zoom={11} style={{ height: '100%', width: '100%' }}>
                   <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <MapFocus ward={selectedWard} />
                   <GeoJSON data={wardGeoJson} style={styleFeature} onEachFeature={onEachFeature} />
                 </MapContainer>
               </div>
@@ -281,14 +305,23 @@ export default function App() {
             <PanelFrame title="Source Attribution" subtitle="Live contribution breakdown from attribution endpoint" loading={attributionLoading} error={attributionError}>
               <div style={{ height: 240 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={attributionData} layout="vertical" margin={{ left: 20 }}>
+                  <BarChart data={attributionData} layout="vertical" margin={{ left: 20, right: 48 }}>
                     <CartesianGrid stroke="#1B2436" />
-                    <XAxis type="number" tick={{ fontSize: 10, fill: '#8291AA' }} />
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: '#8291AA' }} tickFormatter={(value) => `${value}%`} />
                     <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: '#E8EDF5' }} width={90} />
                     <Tooltip contentStyle={{ background: '#131B2E', border: '1px solid #223047' }} />
-                    <Bar dataKey="value" fill="#F2A65A" radius={[0, 6, 6, 0]} />
+                    <Bar dataKey="value" fill="#F2A65A" radius={[0, 6, 6, 0]}>
+                      <LabelList dataKey="value" position="right" fill="#E8EDF5" fontSize={12} formatter={(value) => `${Number(value).toFixed(1)}%`} />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                {attributionData.map((item) => (
+                  <div key={item.name} className="card" style={{ background: '#1B2436', borderColor: '#2A3855', padding: '6px 9px', fontSize: 12 }}>
+                    {item.name}: <strong style={{ color: '#F2A65A' }}>{Number(item.value).toFixed(1)}%</strong>
+                  </div>
+                ))}
               </div>
               <div style={{ fontSize: 12, color: '#8291AA', marginTop: 6 }}>Confidence score: {attribution?.confidence_score ?? '—'}</div>
             </PanelFrame>
@@ -300,7 +333,13 @@ export default function App() {
             <PanelFrame title="Enforcement Priority Queue" subtitle="Top 10 wards by score" loading={enforcementLoading} error={enforcementError}>
               <div style={{ display: 'grid', gap: 8 }}>
                 {priorityRows.map((item, index) => (
-                  <div key={item.ward_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: index < priorityRows.length - 1 ? '1px solid #1B2436' : 'none', gap: 8 }}>
+                  <button
+                    key={item.ward_id}
+                    type="button"
+                    onClick={() => setSelectedWardId(item.ward_id)}
+                    aria-pressed={item.ward_id === selectedWardId}
+                    style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '8px 0', border: 'none', borderBottom: index < priorityRows.length - 1 ? '1px solid #1B2436' : 'none', gap: 8, background: item.ward_id === selectedWardId ? '#1B2436' : 'transparent', color: '#E8EDF5', textAlign: 'left', cursor: 'pointer', borderRadius: 6 }}
+                  >
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{index + 1}. {item.ward_name}</div>
                       <div style={{ fontSize: 11, color: '#8291AA' }}>{item.recommendation}</div>
@@ -309,7 +348,7 @@ export default function App() {
                       <div className="display" style={{ color: '#F2A65A', fontWeight: 700 }}>{item.score}</div>
                       <div style={{ fontSize: 11, color: '#8291AA' }}>{item.dominant_source}</div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </PanelFrame>

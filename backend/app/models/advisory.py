@@ -8,6 +8,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+from app.models.enforcement import WARD_STATE
+
 
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
 ADVISORY_CACHE_DIR = ARTIFACT_DIR / "advisory_cache"
@@ -53,7 +55,7 @@ def _flags(row: pd.Series) -> dict[str, bool]:
 
 def _cache_key(ward_id: str, band: str, lang: str) -> Path:
     ADVISORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return ADVISORY_CACHE_DIR / f"{ward_id}_{band}_{lang}.json"
+    return ADVISORY_CACHE_DIR / f"{ward_id}_{band}_{lang}_v2.json"
 
 
 def _build_system_prompt(language: str) -> str:
@@ -70,6 +72,8 @@ def _compose_fallback_advisory(ward_name: str, band: str, vulnerability_index: f
         return f"{ward_name} ಪ್ರದೇಶದಲ್ಲಿ AQI {band} ಮಟ್ಟದಲ್ಲಿದೆ. ಸಂವೇದನಾಶೀಲರು ಹೊರಾಂಗಣ ಚಟುವಟಿಕೆಗಳನ್ನು ಕಡಿಮೆ ಮಾಡಿ, ಕಿಟಕಿಗಳನ್ನು ಮುಚ್ಚಿ, ಮತ್ತು ಮಾಸ್ಕ್ ಬಳಸುವುದು ಉತ್ತಮ. ಗರ್ಭಿಣಿಯರು, ಮಕ್ಕಳು, ಮತ್ತು ವೃದ್ಧರು ಸಾಧ್ಯವಾದಷ್ಟು ಒಳಾಂಗಣದಲ್ಲಿ ಇರಲಿ."
     if language == "ta":
         return f"{ward_name} பகுதியில் AQI {band} நிலையில் உள்ளது. உணர்திறன் உள்ளவர்கள் வெளிப்புற செயல்பாடுகளை குறைத்து, ஜன்னல்களை மூடி, முககவசம் பயன்படுத்துவது நல்லது. குழந்தைகள், முதியவர்கள், மற்றும் கர்ப்பிணிகள் இயன்றவரை உள்ளரங்கில் இருக்க வேண்டும்."
+    if language == "hi":
+        return f"{ward_name} में AQI {band} स्तर पर है। संवेदनशील लोगों को बाहर की गतिविधियां कम करनी चाहिए, खिड़कियां बंद रखनी चाहिए और बाहर जाना जरूरी हो तो मास्क पहनना चाहिए। बच्चों, बुजुर्गों और गर्भवती लोगों को अधिक समय घर के अंदर रहना चाहिए।"
     return f"AQI in {ward_name} is {band}. Sensitive groups should reduce outdoor activity, keep windows closed, and use a mask if they must travel. Children, older adults, and pregnant people should spend more time indoors."
 
 
@@ -106,8 +110,23 @@ def _call_anthropic(prompt: str, language: str, ward_name: str, band: str) -> st
 def generate_advisory_response(ward_id: str, language: str = "en") -> dict[str, object]:
     ward = WARD_VULNERABILITY.loc[WARD_VULNERABILITY["ward_id"].astype(str) == str(ward_id)]
     if ward.empty:
-        raise ValueError(f"No advisory profile for ward_id={ward_id}")
-    row = ward.iloc[0]
+        state = WARD_STATE.loc[WARD_STATE["ward_id"].astype(str) == str(ward_id)]
+        if state.empty:
+            raise ValueError(f"No advisory profile for ward_id={ward_id}")
+        source = state.iloc[0]
+        row = pd.Series(
+            {
+                "ward_id": str(source.ward_id),
+                "ward_name": str(source.ward_name),
+                "city": "Bengaluru",
+                "aqi_forecast": float(source.aqi),
+                "school_poi_density": 4.0,
+                "hospital_poi_density": 2.0,
+                "elderly_pct": 8.0,
+            }
+        )
+    else:
+        row = ward.iloc[0]
     band = _aqi_band(float(row.aqi_forecast))
     cache_file = _cache_key(str(ward_id), band, language)
     if cache_file.exists():
