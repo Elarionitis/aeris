@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import pandas as pd
 
+from app.models.advisory import generate_advisory_response
+from app.models.enforcement import priority_queue_response
 from app.models.attribution import load_attribution_model
 from app.models.forecasting import load_forecast_artifact, recursive_forecast
 
@@ -69,3 +71,16 @@ def attribution_ward(
         "confidence_score": round(model.confidence_score, 3),
         "method": model.method,
     }
+
+
+@router.get("/enforcement/priority-queue")
+def enforcement_priority_queue() -> dict[str, object]:
+    return priority_queue_response(limit=10)
+
+
+@router.get("/advisory/{ward_id}")
+def advisory_ward(ward_id: str, lang: str = "en") -> dict[str, object]:
+    try:
+        return generate_advisory_response(ward_id, language=lang)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

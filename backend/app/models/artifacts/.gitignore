@@ -1,2 +1,4 @@
 *.pkl
+advisory_cache/
 !*.keep
+
