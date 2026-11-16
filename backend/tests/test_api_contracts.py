@@ -61,6 +61,14 @@ def test_forecast_get_contract(client):
         assert point.prediction >= 0
 
 
+def test_forecast_starts_near_the_current_reading(client):
+    """A forecast that opens far from the ward's current AQI means the served
+    model does not match the served history."""
+    forecast = client.get("/forecast/BTM?hours=6").json()["forecast"]
+    current = next(w for w in client.get("/wards").json() if w["ward_id"] == "BTM")["aqi"]
+    assert abs(forecast[0]["prediction"] - current) < 0.45 * current
+
+
 def test_forecast_post_contract(client):
     history = [
         {

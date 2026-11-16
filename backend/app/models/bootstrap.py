@@ -19,17 +19,14 @@ import pandas as pd
 
 from app.core.logging import get_logger
 from app.domain.wards import WARD_STATE, ward_row
+from app.models import attribution as attribution_module
+from app.models import forecasting as forecasting_module
 from app.models.attribution import (
-    ATTRIBUTION_PATH,
     FEATURES as ATTRIBUTION_FEATURES,
     fit_attribution_model,
     load_attribution_model,
 )
-from app.models.forecasting import (
-    MODEL_PATH,
-    load_forecast_artifact,
-    train_forecast_model,
-)
+from app.models.forecasting import load_forecast_artifact, train_forecast_model
 
 logger = get_logger(__name__)
 
@@ -218,7 +215,7 @@ def ensure_models(force: bool = False) -> BootstrapStatus:
         status = BootstrapStatus()
         table: pd.DataFrame | None = None
 
-        if force or not MODEL_PATH.exists():
+        if force or not forecasting_module.MODEL_PATH.exists():
             try:
                 table = _master_table()
                 train_forecast_model(table)
@@ -228,7 +225,7 @@ def ensure_models(force: bool = False) -> BootstrapStatus:
                 status.errors.append(f"forecast training failed: {exc}")
                 logger.exception("Forecast model training failed")
 
-        if force or not ATTRIBUTION_PATH.exists():
+        if force or not attribution_module.ATTRIBUTION_PATH.exists():
             try:
                 table = table if table is not None else _master_table()
                 columns = ["ward_id", "timestamp", "aqi", *ATTRIBUTION_FEATURES]
