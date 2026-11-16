@@ -1,0 +1,15 @@
+# Optional extras. The service runs without any of these.
+#
+# LLM providers: install the one you intend to use and set its API key. With
+# none installed the orchestrator falls back to deterministic tool routing.
+langchain-anthropic>=0.3.0
+langchain-openai>=0.2.0
+langchain-google-genai>=2.0.0
+
+# Forecasting extras:
+#   xgboost  - swaps in for HistGradientBoostingRegressor when importable.
+#              On macOS it also needs OpenMP: brew install libomp
+#   prophet  - per-ward seasonality baseline, enabled with
+#              ENABLE_PROPHET_BASELINE=true. Not on the serving path.
+xgboost>=2.1.0
+prophet>=1.1.6
