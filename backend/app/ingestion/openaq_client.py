@@ -6,6 +6,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from app.core.config import get_settings
 from app.ingestion._base import (
     RAW_DATA_ROOT,
     IngestionContext,
@@ -25,9 +26,16 @@ SUPPORTED_PARAMETERS = {"aqi", "pm25", "pm10", "no2", "so2"}
 
 
 class OpenAQClient:
-    def __init__(self, cache_root: Path | None = None, session=None) -> None:
+    def __init__(self, cache_root: Path | None = None, session=None, api_key: str | None = None) -> None:
         self.context = IngestionContext.create(cache_root or (RAW_DATA_ROOT / "openaq"), session=session)
         self.base_url = "https://api.openaq.org/v3"
+        # OpenAQ v3 rejects unauthenticated requests; the key was being read
+        # into settings but never sent.
+        self.api_key = api_key if api_key is not None else get_settings().openaq_api_key
+
+    @property
+    def _headers(self) -> dict[str, str]:
+        return {"X-API-Key": self.api_key} if self.api_key else {}
 
     def _fetch_day(self, day: date, wards: list[str] | None) -> pd.DataFrame:
         cached = load_parquet(self.context.cache_root, date_key(day))
@@ -42,6 +50,7 @@ class OpenAQClient:
                 self.context.session,
                 "GET",
                 f"{self.base_url}/measurements",
+                headers=self._headers or None,
                 params={
                     "country": "IN",
                     "city": "Bengaluru",

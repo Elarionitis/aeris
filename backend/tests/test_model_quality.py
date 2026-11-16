@@ -10,8 +10,8 @@ from app.main import app
 from app.models.attribution import fit_attribution_model
 from app.models.forecasting import evaluate_forecast, train_forecast_model
 
+from app.domain.wards import WARD_STATE
 
-from app.models.enforcement import WARD_STATE
 
 def _forecast_fixture():
     rows = []
@@ -96,4 +96,6 @@ def test_smoke_pipeline_end_to_end(tmp_path, monkeypatch):
         assert forecast["forecast"]
         assert attribution["breakdown"]
         assert advisory["advisory"]
+    # Eight wards x (72-step rollout + attribution + advisory) must stay well
+    # inside a demo-friendly budget.
     assert time.perf_counter() - start < 5

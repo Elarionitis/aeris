@@ -4,7 +4,7 @@ from app.models.forecasting import build_training_frame, evaluate_forecast
 
 
 def _master_table():
-    timestamps = pd.date_range("2026-01-01", periods=120, freq="H", tz="UTC")
+    timestamps = pd.date_range("2026-01-01", periods=120, freq="h", tz="UTC")
     return pd.DataFrame(
         {
             "ward_id": ["Ward A"] * len(timestamps),
