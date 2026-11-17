@@ -83,6 +83,17 @@ dashboard, then check `/health` again.
 
 ---
 
+## Ports
+
+Render assigns the listening port through the `PORT` environment variable and
+routes traffic only there. The Dockerfile reads it, defaulting to 8000 so
+local runs and Compose are unchanged.
+
+A container that hardcodes its port deploys and reports healthy while being
+completely unreachable: TLS connects, then the request hangs until it times
+out, because the edge is routing to a port nothing is listening on. If you
+ever see that, check the port before suspecting CORS.
+
 ## What to expect on the free tier
 
 **Cold starts.** The service sleeps after about 15 minutes idle. Waking it
