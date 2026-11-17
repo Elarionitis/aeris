@@ -74,7 +74,7 @@ value is optional. The settings that matter most:
 | `ENVIRONMENT` | `development` | `production` drops the permissive localhost CORS regex |
 | `CORS_ALLOW_ORIGINS` | localhost:5173 | Comma-separated exact origins |
 | `LOG_FORMAT` | `text` | `json` for one object per line |
-| `LLM_PROVIDER` | `auto` | `auto`, `anthropic`, `openai`, `google`, `groq`, `openai_compatible`, `none` |
+| `LLM_PROVIDER` | `auto` | `auto`, `groq`, `anthropic`, `openai`, `openai_compatible`, `google`, `none` |
 | `GROQ_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` | empty | Any one enables LangGraph planning |
 | `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL` | empty | Any OpenAI-compatible endpoint |
 | `AUTO_TRAIN_ON_STARTUP` | `true` | Train missing model artifacts at startup |
@@ -83,7 +83,9 @@ value is optional. The settings that matter most:
 ### Choosing a provider
 
 The orchestrator needs a model that supports **tool calling**. Any of these
-work; install the matching package and set the key.
+work; install the matching package and set the key. With `LLM_PROVIDER=auto`
+the first configured provider in this table's order is used, so a Groq key is
+enough on its own even if other keys are present.
 
 | Provider | `LLM_PROVIDER` | Package | Notes |
 | --- | --- | --- | --- |
@@ -92,7 +94,7 @@ work; install the matching package and set the key.
 | OpenRouter | `openai_compatible` | `langchain-openai` | Set `LLM_BASE_URL` + `LLM_MODEL` |
 | OpenAI | `openai` | `langchain-openai` | Paid |
 | Anthropic | `anthropic` | `langchain-anthropic` | Paid |
-| Google Gemini | `google` | `langchain-google-genai` | Free tier is often capacity-limited |
+| Google Gemini | `google` | `langchain-google-genai` | Free tier often 503s under load; set explicitly |
 
 Groq, the quickest route to a working orchestrator:
 

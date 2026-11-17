@@ -34,6 +34,21 @@ DEFAULT_MODELS: dict[str, str] = {
     "openai_compatible": "",
 }
 
+#: Order LLM_PROVIDER=auto tries providers in.
+#:
+#: Groq leads because its free tier is the most dependable way to get a
+#: working orchestrator with no spend, and tool calling is the one capability
+#: this project cannot do without. Google trails because its free tier returns
+#: 503 under load often enough to be unusable for a public demo; set
+#: LLM_PROVIDER=google explicitly if you want it anyway.
+AUTO_PROVIDER_ORDER: tuple[str, ...] = (
+    "groq",
+    "anthropic",
+    "openai",
+    "openai_compatible",
+    "google",
+)
+
 #: Ready-made LLM_BASE_URL values for providers that speak the OpenAI API.
 #: Any of these works with LLM_PROVIDER=openai_compatible.
 OPENAI_COMPATIBLE_ENDPOINTS: dict[str, str] = {
@@ -126,7 +141,7 @@ class Settings(BaseSettings):
             return "none"
         if self.llm_provider != "auto":
             return self.llm_provider if self.api_key_for(self.llm_provider) else "none"
-        for candidate in ("anthropic", "openai", "google", "groq", "openai_compatible"):
+        for candidate in AUTO_PROVIDER_ORDER:
             if self.api_key_for(candidate):
                 return candidate
         return "none"

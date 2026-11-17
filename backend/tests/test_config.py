@@ -21,7 +21,7 @@ def test_defaults_are_safe_without_any_env():
 def test_auto_provider_picks_whichever_key_is_present():
     assert _settings(openai_api_key="sk-test").resolved_llm_provider() == "openai"
     assert _settings(google_api_key="g-test").resolved_llm_provider() == "google"
-    # Anthropic wins when several keys are configured.
+    # Anthropic wins over OpenAI when both are configured.
     both = _settings(anthropic_api_key="a-test", openai_api_key="sk-test")
     assert both.resolved_llm_provider() == "anthropic"
 
@@ -94,14 +94,25 @@ def test_openai_compatible_needs_both_url_and_key():
     assert both.resolved_llm_provider() == "openai_compatible"
 
 
-def test_auto_prefers_in_declared_order():
+def test_auto_prefers_groq_over_everything_else():
+    """Groq leads the auto order; Gemini's free tier is too flaky to default to."""
     settings = _settings(
         groq_api_key="gsk-test",
         google_api_key="g-test",
+        anthropic_api_key="a-test",
         llm_api_key="hf-test",
         llm_base_url="https://router.huggingface.co/v1",
     )
-    assert settings.resolved_llm_provider() == "google"
+    assert settings.resolved_llm_provider() == "groq"
+
+
+def test_google_is_last_in_the_auto_order():
+    from app.core.config import AUTO_PROVIDER_ORDER
+
+    assert AUTO_PROVIDER_ORDER[0] == "groq"
+    assert AUTO_PROVIDER_ORDER[-1] == "google"
+    # An explicit choice still wins over the ordering.
+    assert _settings(llm_provider="google", google_api_key="g").resolved_llm_provider() == "google"
 
 
 def test_known_openai_compatible_endpoints_are_https_v1():
