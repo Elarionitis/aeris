@@ -28,7 +28,7 @@ DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o-mini",
     "google": "gemini-3.8-flash",
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     # openai_compatible has no sensible default: the model id belongs to
     # whichever endpoint LLM_BASE_URL points at. LLM_MODEL is required.
     "openai_compatible": "",

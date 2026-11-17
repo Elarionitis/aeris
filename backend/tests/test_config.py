@@ -82,8 +82,23 @@ def test_band_edges():
 
 
 def test_groq_is_picked_up_by_auto():
-    assert _settings(groq_api_key="gsk-test").resolved_llm_provider() == "groq"
-    assert _settings(groq_api_key="gsk-test").resolved_llm_model() == "llama-3.3-70b-versatile"
+    settings = _settings(groq_api_key="gsk-test")
+    assert settings.resolved_llm_provider() == "groq"
+    assert settings.resolved_llm_model() == DEFAULT_MODELS["groq"]
+
+
+def test_every_provider_default_is_a_non_empty_model_id():
+    """A retired or blank default fails every call at runtime.
+
+    openai_compatible is the deliberate exception: its model id belongs to
+    whichever endpoint LLM_BASE_URL names, so LLM_MODEL is required instead.
+    """
+    for provider, model in DEFAULT_MODELS.items():
+        if provider == "openai_compatible":
+            assert model == ""
+            continue
+        assert model, f"{provider} has no default model"
+        assert " " not in model, f"{provider} default looks malformed: {model!r}"
 
 
 def test_openai_compatible_needs_both_url_and_key():
