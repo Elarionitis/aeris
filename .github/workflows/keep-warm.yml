@@ -1,0 +1,101 @@
+# Keeps the deployed API awake and watches its health.
+#
+# Render's free tier sleeps a service after about 15 minutes idle, and waking
+# it takes 30-50 seconds. A visitor arriving cold waits for that, so this
+# pings /health often enough that the service never sleeps.
+#
+# It is also real monitoring: the job fails if the service is down or its
+# models are not ready, and a failed scheduled run emails the repository
+# owner. Nothing runs on anyone's laptop.
+name: Keep API warm
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub runs scheduled jobs on a best-effort basis and
+    # can delay them under load, which is fine here: an occasional late ping
+    # costs one visitor a cold start, not correctness.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Ping /health and check the service is serving
+        env:
+          # Override in Settings > Secrets and variables > Actions > Variables
+          # if the service URL ever changes.
+          API_URL: ${{ vars.AERIS_API_URL || 'https://aeris-api-oyuq.onrender.com' }}
+        run: |
+          set -uo pipefail
+
+          echo "Checking ${API_URL}/health"
+
+          # A sleeping service needs a long first request, so allow a generous
+          # timeout and retry rather than reporting a false outage.
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' --max-time 120 "${API_URL}/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              break
+            fi
+            echo "attempt ${attempt}: HTTP ${code}"
+            [ "$attempt" -lt 3 ] && sleep 20
+          done
+
+          if [ "$code" != "200" ]; then
+            echo "::error::API did not return 200 after 3 attempts (last: HTTP ${code})"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json, os, sys
+
+          with open("/tmp/health.json") as handle:
+              health = json.load(handle)
+
+          models = health.get("models", {})
+          orchestrator = health.get("orchestrator", {})
+
+          print(f"status      : {health.get('status')}")
+          print(f"version     : {health.get('version')}")
+          print(f"environment : {health.get('environment')}")
+          print(f"models      : {models}")
+          print(f"orchestrator: {orchestrator}")
+
+          failures = []
+          if models.get("forecast_model") != "ready":
+              failures.append("forecast model is not ready")
+          if models.get("attribution_model") != "ready":
+              failures.append("attribution model is not ready")
+
+          # The orchestrator falling back is worth surfacing but is often a
+          # transient provider outage, so it warns rather than failing the run.
+          mode = orchestrator.get("mode")
+          if mode == "failing":
+              print(f"::warning::Orchestrator is falling back: {orchestrator.get('last_error')}")
+          elif mode == "deterministic":
+              print("::warning::No LLM provider configured; answers use deterministic routing")
+
+          if failures:
+              for failure in failures:
+                  print(f"::error::{failure}")
+              sys.exit(1)
+
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a") as handle:
+                  handle.write(
+                      f"### API healthy\n\n"
+                      f"- status: `{health.get('status')}`\n"
+                      f"- orchestrator: `{mode}` "
+                      f"(`{orchestrator.get('provider')}` / `{orchestrator.get('model')}`)\n"
+                  )
+          PY

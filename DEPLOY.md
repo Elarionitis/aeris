@@ -127,12 +127,29 @@ ever see that, check the port before suspecting CORS.
 takes roughly 30–50 seconds, including training the models. The first visitor
 after a quiet period waits.
 
-Two ways to avoid that:
+`.github/workflows/keep-warm.yml` handles this: it pings `/health` every ten
+minutes from GitHub Actions, so the service never idles long enough to sleep
+and nothing has to run on your own machine. Public repositories get unlimited
+Actions minutes, so it is free.
 
-- Ping `/health` every 10 minutes from an uptime monitor.
-- Or bake the trained artifacts into the image: drop
-  `app/models/artifacts/*.pkl` from `.dockerignore` and train before building.
-  Startup then only loads them.
+It doubles as monitoring. The job fails, and GitHub emails you, if the service
+stops responding or either model stops loading. A falling-back orchestrator is
+reported as a warning rather than a failure, since that is usually a transient
+provider outage.
+
+Two caveats worth knowing:
+
+- GitHub runs scheduled workflows on a best-effort basis and delays them under
+  load, so a ping can arrive late. The cost is one visitor's cold start.
+- GitHub disables scheduled workflows in repositories with no commits for 60
+  days, and emails before doing so. Re-enable it from the Actions tab.
+
+If you want tighter guarantees, point an external monitor such as UptimeRobot
+at `/health` as well. The two do not conflict.
+
+Alternatively, remove the cold start itself by baking the trained artifacts
+into the image: drop `app/models/artifacts/*.pkl` from `.dockerignore` and
+train before building, so startup only loads them.
 
 **Rate limiting is per instance.** The limiter holds counts in memory, which
 is accurate on the free tier's single worker. Running more than one instance

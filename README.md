@@ -132,6 +132,10 @@ docker compose -f docker-compose.prod.yml up --build
 [DEPLOY.md](DEPLOY.md) for the full walkthrough, including the CORS step that
 is mandatory in production and what to expect from free-tier cold starts.
 
+A scheduled GitHub Action pings `/health` every ten minutes so the free-tier
+service never sleeps, and fails loudly if the API or either model stops
+responding.
+
 ---
 
 ## 🔑 Enabling the LLM orchestrator
