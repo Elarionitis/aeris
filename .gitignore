@@ -30,3 +30,6 @@ npm-debug.log*
 
 # Editor / assistant workspace config
 .claude/
+
+# Experiment virtualenvs
+experiments/*/.venv/
