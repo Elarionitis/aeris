@@ -17,7 +17,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = BACKEND_ROOT.parent
 
-LLMProvider = Literal["auto", "anthropic", "openai", "google", "none"]
+LLMProvider = Literal[
+    "auto", "anthropic", "openai", "google", "groq", "openai_compatible", "none"
+]
 
 #: Default model per provider. Providers retire model ids, and a retired id
 #: fails every request, so these are pinned to current releases and should be
@@ -26,6 +28,20 @@ DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o-mini",
     "google": "gemini-3.8-flash",
+    "groq": "llama-3.3-70b-versatile",
+    # openai_compatible has no sensible default: the model id belongs to
+    # whichever endpoint LLM_BASE_URL points at. LLM_MODEL is required.
+    "openai_compatible": "",
+}
+
+#: Ready-made LLM_BASE_URL values for providers that speak the OpenAI API.
+#: Any of these works with LLM_PROVIDER=openai_compatible.
+OPENAI_COMPATIBLE_ENDPOINTS: dict[str, str] = {
+    "groq": "https://api.groq.com/openai/v1",
+    "huggingface": "https://router.huggingface.co/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
+    "together": "https://api.together.xyz/v1",
 }
 
 
@@ -74,6 +90,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     google_api_key: str = ""
+    groq_api_key: str = ""
+
+    # Any OpenAI-compatible endpoint: Hugging Face, OpenRouter, Cerebras,
+    # Together, or a self-hosted gateway. See OPENAI_COMPATIBLE_ENDPOINTS.
+    llm_base_url: str = ""
+    llm_api_key: str = ""
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -104,16 +126,24 @@ class Settings(BaseSettings):
             return "none"
         if self.llm_provider != "auto":
             return self.llm_provider if self.api_key_for(self.llm_provider) else "none"
-        for candidate in ("anthropic", "openai", "google"):
+        for candidate in ("anthropic", "openai", "google", "groq", "openai_compatible"):
             if self.api_key_for(candidate):
                 return candidate
         return "none"
 
     def api_key_for(self, provider: str) -> str:
+        """The key configured for ``provider``, or "" when it is unusable.
+
+        An OpenAI-compatible endpoint needs a base URL as well as a key, so it
+        only counts as configured when both are present.
+        """
+        if provider == "openai_compatible":
+            return self.llm_api_key if self.llm_base_url and self.llm_api_key else ""
         return {
             "anthropic": self.anthropic_api_key,
             "openai": self.openai_api_key,
             "google": self.google_api_key,
+            "groq": self.groq_api_key,
         }.get(provider, "")
 
     def resolved_llm_model(self, provider: str | None = None) -> str:

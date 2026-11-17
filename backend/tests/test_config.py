@@ -79,3 +79,35 @@ def test_band_edges():
     assert aqi_band(10_000) == "Severe"
     # Negative readings are clamped rather than crashing the band lookup.
     assert aqi_band(-5) == "Good"
+
+
+def test_groq_is_picked_up_by_auto():
+    assert _settings(groq_api_key="gsk-test").resolved_llm_provider() == "groq"
+    assert _settings(groq_api_key="gsk-test").resolved_llm_model() == "llama-3.3-70b-versatile"
+
+
+def test_openai_compatible_needs_both_url_and_key():
+    # A key with no endpoint, or an endpoint with no key, is not configured.
+    assert _settings(llm_api_key="hf-test").resolved_llm_provider() == "none"
+    assert _settings(llm_base_url="https://router.huggingface.co/v1").resolved_llm_provider() == "none"
+    both = _settings(llm_api_key="hf-test", llm_base_url="https://router.huggingface.co/v1")
+    assert both.resolved_llm_provider() == "openai_compatible"
+
+
+def test_auto_prefers_in_declared_order():
+    settings = _settings(
+        groq_api_key="gsk-test",
+        google_api_key="g-test",
+        llm_api_key="hf-test",
+        llm_base_url="https://router.huggingface.co/v1",
+    )
+    assert settings.resolved_llm_provider() == "google"
+
+
+def test_known_openai_compatible_endpoints_are_https_v1():
+    from app.core.config import OPENAI_COMPATIBLE_ENDPOINTS
+
+    assert "huggingface" in OPENAI_COMPATIBLE_ENDPOINTS
+    for name, url in OPENAI_COMPATIBLE_ENDPOINTS.items():
+        assert url.startswith("https://"), name
+        assert url.endswith("/v1"), name

@@ -160,6 +160,30 @@ def _build(provider: str, model: str, settings: Settings):
             max_completion_tokens=settings.llm_max_tokens,
             **common,
         )
+    if provider == "groq":
+        from langchain_groq import ChatGroq
+
+        return ChatGroq(
+            api_key=settings.groq_api_key,
+            max_tokens=settings.llm_max_tokens,
+            **common,
+        )
+    if provider == "openai_compatible":
+        # Hugging Face, OpenRouter, Cerebras, Together, or any gateway that
+        # speaks the OpenAI chat-completions API.
+        from langchain_openai import ChatOpenAI
+
+        if not settings.llm_model:
+            raise ValueError(
+                "LLM_MODEL is required with LLM_PROVIDER=openai_compatible; the "
+                "model id belongs to whichever endpoint LLM_BASE_URL points at."
+            )
+        return ChatOpenAI(
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            max_completion_tokens=settings.llm_max_tokens,
+            **common,
+        )
     if provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
 

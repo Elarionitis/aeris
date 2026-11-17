@@ -2,9 +2,14 @@
 #
 # LLM providers: install the one you intend to use and set its API key. With
 # none installed the orchestrator falls back to deterministic tool routing.
-langchain-anthropic>=0.3.0
-langchain-openai>=0.2.0
-langchain-google-genai>=2.0.0
+langchain-anthropic>=0.3.0          # LLM_PROVIDER=anthropic
+langchain-openai>=0.2.0             # LLM_PROVIDER=openai  OR  openai_compatible
+langchain-google-genai>=2.0.0       # LLM_PROVIDER=google
+langchain-groq>=0.2.0               # LLM_PROVIDER=groq
+#
+# openai_compatible covers any endpoint speaking the OpenAI chat API --
+# Hugging Face, OpenRouter, Cerebras, Together -- and needs only
+# langchain-openai plus LLM_BASE_URL and LLM_MODEL.
 
 # Forecasting extras:
 #   xgboost  - swaps in for HistGradientBoostingRegressor when importable.
