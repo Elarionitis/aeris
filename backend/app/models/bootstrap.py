@@ -98,7 +98,7 @@ def synthetic_master_table(hours: int = HISTORY_HOURS, seed: int = RANDOM_SEED) 
     timestamps = pd.date_range(end=end, periods=hours, freq="h", tz="UTC")
 
     hour_of_day = timestamps.hour.to_numpy(dtype=float)
-    day_of_week = timestamps.dayofweek.to_numpy(dtype=float)
+    day_of_week = timestamps.day_of_week.to_numpy(dtype=float)
     weekday_factor = np.where(day_of_week >= 5, 0.82, 1.0)
 
     frames: list[pd.DataFrame] = []

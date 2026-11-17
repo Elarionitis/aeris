@@ -19,10 +19,13 @@ PROJECT_ROOT = BACKEND_ROOT.parent
 
 LLMProvider = Literal["auto", "anthropic", "openai", "google", "none"]
 
+#: Default model per provider. Providers retire model ids, and a retired id
+#: fails every request, so these are pinned to current releases and should be
+#: reviewed when a provider deprecates one. Override with LLM_MODEL.
 DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-5",
+    "anthropic": "claude-sonnet-5-5",
     "openai": "gpt-4o-mini",
-    "google": "gemini-2.0-flash",
+    "google": "gemini-3.8-flash",
 }
 
 

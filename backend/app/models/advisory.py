@@ -161,7 +161,12 @@ def _fallback_advisory(ward_name: str, band: str, language: str) -> str:
 
 def _generate_with_llm(ward_name: str, band: str, aqi: float, vulnerability_index: float, flags: dict[str, bool], language: str) -> str | None:
     """Ask the configured LLM for the advisory; ``None`` on any failure."""
-    from app.agents.llm import get_chat_model, message_text  # lazy, avoids a cycle
+    from app.agents.llm import (  # lazy import, avoids a cycle
+        get_chat_model,
+        message_text,
+        record_llm_failure,
+        record_llm_success,
+    )
 
     model = get_chat_model()
     if model is None:
@@ -176,10 +181,12 @@ def _generate_with_llm(ward_name: str, band: str, aqi: float, vulnerability_inde
             ]
         )
         text = message_text(reply)
-    except Exception:
+    except Exception as exc:
+        record_llm_failure(exc)
         logger.warning("Advisory LLM call failed for %s/%s; using template", ward_name, language, exc_info=True)
         return None
 
+    record_llm_success()
     text = " ".join(str(text).split()).strip()
     if not text:
         return None

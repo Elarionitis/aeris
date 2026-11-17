@@ -73,7 +73,7 @@ def build_training_frame(master_table: pd.DataFrame) -> pd.DataFrame:
     frame["aqi_rolling_6h"] = grouped[TARGET_COLUMN].transform(lambda s: s.shift(1).rolling(6, min_periods=1).mean())
     frame["aqi_rolling_24h"] = grouped[TARGET_COLUMN].transform(lambda s: s.shift(1).rolling(24, min_periods=1).mean())
     hour = frame["timestamp"].dt.hour
-    dow = frame["timestamp"].dt.dayofweek
+    dow = frame["timestamp"].dt.day_of_week
     frame["hour_sin"] = np.sin(2 * np.pi * hour / 24)
     frame["hour_cos"] = np.cos(2 * np.pi * hour / 24)
     frame["dow_sin"] = np.sin(2 * np.pi * dow / 7)
@@ -250,8 +250,8 @@ def recursive_forecast(
             "aqi_rolling_24h": float(np.mean(observed[-24:])),
             "hour_sin": np.sin(2 * np.pi * future_timestamp.hour / 24),
             "hour_cos": np.cos(2 * np.pi * future_timestamp.hour / 24),
-            "dow_sin": np.sin(2 * np.pi * future_timestamp.dayofweek / 7),
-            "dow_cos": np.cos(2 * np.pi * future_timestamp.dayofweek / 7),
+            "dow_sin": np.sin(2 * np.pi * future_timestamp.day_of_week / 7),
+            "dow_cos": np.cos(2 * np.pi * future_timestamp.day_of_week / 7),
         }
         for name, value in updates.items():
             position = column_index.get(name)

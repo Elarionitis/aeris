@@ -62,12 +62,13 @@ def health_check() -> dict[str, object]:
 
     settings = get_settings()
     models = model_status()
+    orchestrator = llm_info(settings)
     return {
-        "status": "ok" if models.ready else "degraded",
+        "status": "ok" if models.ready and orchestrator.healthy else "degraded",
         "version": settings.app_version,
         "environment": settings.environment,
         "models": models.as_dict(),
-        "orchestrator": llm_info(settings).as_dict(),
+        "orchestrator": orchestrator.as_dict(),
     }
 
 

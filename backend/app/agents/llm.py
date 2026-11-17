@@ -9,6 +9,8 @@ the service stays fully functional offline.
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -16,6 +18,46 @@ from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# Outcome of the most recent real call to the provider. A configured key says
+# nothing about whether the provider actually answers: a retired model id or an
+# overloaded endpoint fails every request while the service still reports a
+# provider as "available". Health has to reflect calls, not configuration.
+_OUTCOME_LOCK = threading.Lock()
+_LAST_ERROR: str | None = None
+_LAST_ERROR_AT: float | None = None
+_LAST_SUCCESS_AT: float | None = None
+
+
+def record_llm_success() -> None:
+    """Note that a provider call succeeded, clearing any previous failure."""
+    global _LAST_ERROR, _LAST_ERROR_AT, _LAST_SUCCESS_AT
+    with _OUTCOME_LOCK:
+        _LAST_ERROR = None
+        _LAST_ERROR_AT = None
+        _LAST_SUCCESS_AT = time.time()
+
+
+def record_llm_failure(error: BaseException | str) -> None:
+    """Note that a provider call failed, keeping a short reason for /health."""
+    global _LAST_ERROR, _LAST_ERROR_AT
+    message = str(error).strip() or error.__class__.__name__
+    with _OUTCOME_LOCK:
+        _LAST_ERROR = message[:300]
+        _LAST_ERROR_AT = time.time()
+
+
+def reset_llm_outcome() -> None:
+    """Forget recorded outcomes; used by tests."""
+    global _LAST_ERROR, _LAST_ERROR_AT, _LAST_SUCCESS_AT
+    with _OUTCOME_LOCK:
+        _LAST_ERROR = _LAST_ERROR_AT = _LAST_SUCCESS_AT = None
+
+
+def _outcome() -> tuple[str | None, float | None, float | None]:
+    with _OUTCOME_LOCK:
+        return _LAST_ERROR, _LAST_ERROR_AT, _LAST_SUCCESS_AT
 
 
 @dataclass(frozen=True)
@@ -28,15 +70,36 @@ class LLMInfo:
 
     @property
     def mode(self) -> str:
-        return "llm" if self.available else "deterministic"
+        """What the orchestrator will really do on the next question."""
+        if not self.available:
+            return "deterministic"
+        last_error, _, last_success = _outcome()
+        if last_error and last_success is None:
+            # Configured, tried, and has never once succeeded.
+            return "failing"
+        return "llm"
+
+    @property
+    def healthy(self) -> bool:
+        return self.mode != "failing"
 
     def as_dict(self) -> dict[str, object]:
+        last_error, last_error_at, last_success = _outcome()
         return {
             "provider": self.provider,
             "model": self.model or None,
             "available": self.available,
             "mode": self.mode,
+            "last_error": last_error,
+            "last_error_at": _iso(last_error_at),
+            "last_success_at": _iso(last_success),
         }
+
+
+def _iso(timestamp: float | None) -> str | None:
+    if timestamp is None:
+        return None
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))
 
 
 def message_text(message: object) -> str:

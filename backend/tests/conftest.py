@@ -14,6 +14,9 @@ from app.models import advisory as advisory_module
 from app.models import attribution as attribution_module
 from app.models import bootstrap as bootstrap_module
 from app.models import forecasting as forecasting_module
+from app.agents import llm as llm_module
+from app.agents import orchestrator as orchestrator_module
+from app.agents.llm import reset_llm_outcome
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -33,3 +36,22 @@ def isolated_artifacts(tmp_path_factory):
     patch.undo()
     # Drop the process-wide caches so nothing leaks into a later session.
     bootstrap_module._CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
+def offline_llm(monkeypatch):
+    """No test may call a real LLM provider.
+
+    A developer with a key in backend/.env would otherwise have the suite
+    issue billable network calls and hang on provider retries. Tests that
+    need a model inject their own fake over these.
+
+    Also resets the recorded provider outcome, which is process-wide state: a
+    test that forces a failure would otherwise leave the service looking
+    degraded to every test after it.
+    """
+    reset_llm_outcome()
+    monkeypatch.setattr(llm_module, "get_chat_model", lambda: None)
+    monkeypatch.setattr(orchestrator_module, "get_chat_model", lambda: None)
+    yield
+    reset_llm_outcome()

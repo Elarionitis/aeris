@@ -26,7 +26,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-from app.agents.llm import get_chat_model, llm_info, message_text
+from app.agents.llm import (
+    get_chat_model,
+    llm_info,
+    message_text,
+    record_llm_failure,
+    record_llm_success,
+)
 from app.agents.tools import AGENT_FUNCTIONS, TOOL_AGENTS, build_tools
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -309,6 +315,7 @@ def run_orchestrator(
             messages = list(state["messages"])
             answer = _final_text(messages)
             if answer:
+                record_llm_success()
                 return {
                     "answer": answer,
                     "trace": _trace_from_messages(messages),
@@ -317,8 +324,10 @@ def run_orchestrator(
                     "ward_id": canonical_ward,
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
                 }
+            record_llm_failure("provider returned an empty completion")
             logger.warning("Orchestrator graph produced no final text; falling back")
-        except Exception:
+        except Exception as exc:
+            record_llm_failure(exc)
             logger.exception("Orchestrator graph run failed; falling back to deterministic routing")
 
     answer, trace = deterministic_answer(question, canonical_ward)
