@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.agents.llm import get_chat_model as REAL_GET_CHAT_MODEL
 from app.core.aqi import aqi_band, band_scale, severity_weight
 from app.core.config import DEFAULT_MODELS, Settings
 
@@ -137,3 +138,37 @@ def test_known_openai_compatible_endpoints_are_https_v1():
     for name, url in OPENAI_COMPATIBLE_ENDPOINTS.items():
         assert url.startswith("https://"), name
         assert url.endswith("/v1"), name
+
+
+def test_missing_provider_package_is_reported_as_failing(monkeypatch):
+    """A configured provider whose package is absent must not look healthy.
+
+    This is what a container shipped without a provider package does: it
+    starts, answers every question through deterministic routing, and would
+    otherwise still report mode "llm".
+    """
+    from app.agents import llm as llm_module
+
+    # Bound at import time, before the autouse fixture stubs the module
+    # attribute, so this is the real lru_cached function.
+    build_model = REAL_GET_CHAT_MODEL
+
+    configured = _settings(llm_provider="groq", groq_api_key="gsk-test")
+    llm_module.reset_llm_outcome()
+    build_model.cache_clear()
+    monkeypatch.setattr(llm_module, "get_settings", lambda: configured)
+
+    def missing_package(*_args, **_kwargs):
+        raise ImportError("No module named 'langchain_groq'")
+
+    monkeypatch.setattr(llm_module, "_build", missing_package)
+
+    assert build_model() is None
+
+    info = llm_module.llm_info(configured)
+    assert info.mode == "failing"
+    assert not info.healthy
+    assert "not installed" in info.as_dict()["last_error"]
+
+    build_model.cache_clear()
+    llm_module.reset_llm_outcome()

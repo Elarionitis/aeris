@@ -210,7 +210,21 @@ def get_chat_model():
         return None
     try:
         model = _build(info.provider, info.model, settings)
-    except Exception:
+    except ImportError as exc:
+        # The provider package is missing. Record it, because the service
+        # otherwise reports a healthy LLM while every question falls back.
+        record_llm_failure(
+            f"provider package for '{info.provider}' is not installed: {exc}"
+        )
+        logger.error(
+            "LLM provider %s is configured but its package is not installed. "
+            "Install it (see requirements-optional.txt) or the orchestrator will "
+            "only ever use deterministic routing.",
+            info.provider,
+        )
+        return None
+    except Exception as exc:
+        record_llm_failure(exc)
         logger.exception("Failed to initialise LLM provider %s (%s)", info.provider, info.model)
         return None
     logger.info("LLM ready: provider=%s model=%s", info.provider, info.model)

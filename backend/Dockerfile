@@ -7,8 +7,15 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # Dependencies first so application edits do not invalidate the wheel cache.
+# A provider package is what makes the orchestrator able to call an LLM at
+# all; without one the service starts fine and silently falls back to
+# deterministic routing. Groq is the documented default; override to build an
+# image for a different provider, or pass "" for a deterministic-only image.
+ARG LLM_PROVIDER_PACKAGE="langchain-groq>=0.2.0"
+
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && if [ -n "$LLM_PROVIDER_PACKAGE" ]; then pip install --no-cache-dir "$LLM_PROVIDER_PACKAGE"; fi
 
 COPY app ./app
 

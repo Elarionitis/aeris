@@ -83,6 +83,33 @@ dashboard, then check `/health` again.
 
 ---
 
+## The service URL may not be the name you chose
+
+Render appends a suffix when a subdomain is taken, so `aeris-api` can deploy
+as `aeris-api-oyuq.onrender.com`. The real URL is printed in the deploy log
+as *"Available at your primary URL"*, and shown on the service page.
+
+Take both URLs from there before setting `VITE_API_BASE` and
+`CORS_ALLOW_ORIGINS`, rather than assuming them. Pointing the dashboard at a
+URL that is not yours produces a request that hangs rather than fails, which
+looks exactly like a CORS or networking fault.
+
+## A provider package must be in the image
+
+`requirements.txt` ships `langchain-core` but no vendor package, because the
+choice of provider is yours. The Dockerfile therefore installs one through
+the `LLM_PROVIDER_PACKAGE` build argument, defaulting to `langchain-groq`.
+
+Without it the service starts, reports healthy, and answers every question
+through deterministic routing. Build for a different provider with:
+
+```bash
+docker build --build-arg LLM_PROVIDER_PACKAGE=langchain-openai backend/
+```
+
+`/health` reports `"mode": "failing"` with `provider package ... is not
+installed` when this is wrong.
+
 ## Ports
 
 Render assigns the listening port through the `PORT` environment variable and
