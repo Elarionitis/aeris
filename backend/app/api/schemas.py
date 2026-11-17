@@ -108,6 +108,7 @@ class OrchestratorResponse(BaseModel):
     engine: Literal["langgraph", "deterministic"]
     llm: dict[str, Any]
     ward_id: str | None = None
+    cached: bool = False
     elapsed_ms: int
 
 

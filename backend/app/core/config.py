@@ -102,6 +102,13 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=1024, ge=64, le=8192)
     llm_timeout_seconds: int = Field(default=45, ge=5, le=300)
     orchestrator_max_steps: int = Field(default=8, ge=1, le=30)
+
+    # Public-deployment guards. The orchestrator spends provider quota on
+    # every call, so a public URL needs both a ceiling and a cache.
+    orchestrator_rate_limit: int = Field(default=20, ge=1, le=10_000)
+    orchestrator_rate_window_seconds: int = Field(default=3600, ge=1)
+    orchestrator_cache_ttl_seconds: int = Field(default=900, ge=0)
+    orchestrator_cache_max_entries: int = Field(default=256, ge=1, le=10_000)
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     google_api_key: str = ""

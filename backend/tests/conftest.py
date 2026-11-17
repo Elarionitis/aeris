@@ -17,6 +17,7 @@ from app.models import forecasting as forecasting_module
 from app.agents import llm as llm_module
 from app.agents import orchestrator as orchestrator_module
 from app.agents.llm import reset_llm_outcome
+from app.agents.orchestrator import reset_answer_cache
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -51,7 +52,9 @@ def offline_llm(monkeypatch):
     degraded to every test after it.
     """
     reset_llm_outcome()
+    reset_answer_cache()
     monkeypatch.setattr(llm_module, "get_chat_model", lambda: None)
     monkeypatch.setattr(orchestrator_module, "get_chat_model", lambda: None)
     yield
     reset_llm_outcome()
+    reset_answer_cache()

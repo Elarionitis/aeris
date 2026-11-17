@@ -126,6 +126,12 @@ Production-style stack (built frontend behind nginx, JSON logs):
 docker compose -f docker-compose.prod.yml up --build
 ```
 
+### Deploying
+
+`render.yaml` describes both services for Render's free tier. See
+[DEPLOY.md](DEPLOY.md) for the full walkthrough, including the CORS step that
+is mandatory in production and what to expect from free-tier cold starts.
+
 ---
 
 ## 🔑 Enabling the LLM orchestrator
@@ -187,6 +193,8 @@ Copy `backend/.env.example` to `backend/.env`. Every value is optional.
 | `LLM_PROVIDER` | `auto` | `auto`, `groq`, `anthropic`, `openai`, `openai_compatible`, `google`, `none` |
 | `LLM_MODEL` | per provider | Override the default model id |
 | `ORCHESTRATOR_MAX_STEPS` | `8` | Bound on the plan ⇄ act loop |
+| `ORCHESTRATOR_RATE_LIMIT` | `20` | Questions per window, per client IP |
+| `ORCHESTRATOR_CACHE_TTL_SECONDS` | `900` | How long an LLM answer is reused |
 | `AUTO_TRAIN_ON_STARTUP` | `true` | Train missing model artifacts at startup |
 | `ENABLE_PROPHET_BASELINE` | `false` | Per-ward Prophet baseline; slow, not used for serving |
 
@@ -301,7 +309,6 @@ This is **decision support, not an enforcement system of record**.
 
 - [ ] Wire the ingestion clients into a scheduled job building the real master table
 - [ ] Real BBMP ward boundaries
-- [ ] Rate limiting and caching on the orchestrator endpoint before public deployment
 - [ ] Retrain on live data and re-evaluate against the persistence baseline
 - [ ] Advisory agent as a fourth orchestrator tool
 

@@ -33,12 +33,34 @@ from app.agents.llm import (
     record_llm_failure,
     record_llm_success,
 )
+from app.agents.cache import AnswerCache
 from app.agents.tools import AGENT_FUNCTIONS, TOOL_AGENTS, build_tools
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.domain.wards import list_ward_ids, resolve_ward_id
 
 logger = get_logger(__name__)
+
+_CACHE: AnswerCache | None = None
+
+
+def get_answer_cache() -> AnswerCache:
+    """Process-wide cache, built on first use from settings."""
+    global _CACHE
+    if _CACHE is None:
+        settings = get_settings()
+        _CACHE = AnswerCache(
+            max_entries=settings.orchestrator_cache_max_entries,
+            ttl_seconds=settings.orchestrator_cache_ttl_seconds,
+        )
+    return _CACHE
+
+
+def reset_answer_cache() -> None:
+    """Drop the cache; used by tests and after a settings change."""
+    global _CACHE
+    _CACHE = None
+
 
 SYSTEM_PROMPT = """You are Aeris, the orchestrator for a city air-quality intelligence platform covering Bengaluru.
 
@@ -301,6 +323,14 @@ def run_orchestrator(
     started = time.perf_counter()
     canonical_ward = resolve_ward_id(ward_id) if ward_id else None
 
+    cache = get_answer_cache()
+    cache_key = cache.key(question, canonical_ward, language)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        cached["cached"] = True
+        cached["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        return cached
+
     if info.available and get_chat_model() is not None:
         try:
             state = get_graph().invoke(
@@ -316,14 +346,20 @@ def run_orchestrator(
             answer = _final_text(messages)
             if answer:
                 record_llm_success()
-                return {
+                payload = {
                     "answer": answer,
                     "trace": _trace_from_messages(messages),
                     "engine": "langgraph",
                     "llm": info.as_dict(),
                     "ward_id": canonical_ward,
+                    "cached": False,
                     "elapsed_ms": int((time.perf_counter() - started) * 1000),
                 }
+                # Only LLM answers are worth caching. A deterministic answer
+                # is cheap to recompute and reflects a degraded provider, so
+                # caching one would outlive the outage that produced it.
+                cache.set(cache_key, payload)
+                return payload
             record_llm_failure("provider returned an empty completion")
             logger.warning("Orchestrator graph produced no final text; falling back")
         except Exception as exc:
@@ -337,5 +373,6 @@ def run_orchestrator(
         "engine": "deterministic",
         "llm": info.as_dict(),
         "ward_id": canonical_ward,
+        "cached": False,
         "elapsed_ms": int((time.perf_counter() - started) * 1000),
     }

@@ -1,0 +1,58 @@
+# Render blueprint: https://render.com/docs/blueprint-spec
+#
+# Deploy with: New > Blueprint, point it at this repository.
+# The only secret to set by hand is GROQ_API_KEY, which is marked sync: false
+# so it is never read from this file.
+services:
+  - type: web
+    name: aeris-api
+    runtime: docker
+    plan: free
+    region: singapore          # closest Render region to Bengaluru
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      - key: AUTO_TRAIN_ON_STARTUP
+        value: "true"
+      # Tight budget guards: a public demo should not be able to drain the
+      # provider quota. Raise these once you know the real traffic.
+      - key: ORCHESTRATOR_RATE_LIMIT
+        value: "15"
+      - key: ORCHESTRATOR_RATE_WINDOW_SECONDS
+        value: "3600"
+      - key: ORCHESTRATOR_CACHE_TTL_SECONDS
+        value: "1800"
+      # Set in the Render dashboard, not here.
+      - key: GROQ_API_KEY
+        sync: false
+      # Filled in from the static site's URL once it exists; production mode
+      # drops the permissive localhost CORS regex, so this must be exact.
+      - key: CORS_ALLOW_ORIGINS
+        sync: false
+
+  - type: web
+    name: aeris-dashboard
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    autoDeploy: true
+    envVars:
+      # The API's URL, e.g. https://aeris-api.onrender.com
+      - key: VITE_API_BASE
+        sync: false
+    routes:
+      # Single-page app: unknown paths must fall through to index.html.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
