@@ -27,3 +27,6 @@ npm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Editor / assistant workspace config
+.claude/
